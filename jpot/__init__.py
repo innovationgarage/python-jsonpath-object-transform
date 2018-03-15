@@ -1,4 +1,4 @@
-import jsonpath
+from jsonpath_ng.ext import parse
 
 class NoValue: pass
 
@@ -17,7 +17,7 @@ def transform(data, template):
                 if value is not NoValue}
     elif isinstance(template, (list, tuple)):
         assert len(template) > 0, "List specification must include a JSONPath"
-        result = jsonpath.jsonpath(data, template[0], use_eval=False) or []
+        result = [item.value for item in parse(template[0]).find(data)] or []
         if len(template) < 2:
             return result
         if not result:
@@ -30,6 +30,6 @@ def transform(data, template):
                   if value is not NoValue]
         return result
     elif isinstance(template, str):
-        return first(jsonpath.jsonpath(data, template, use_eval=False))
+        return first(parse(template).find(data)).value
     else:
         assert False, "Unknown data type for template: %s" % (type(template),)

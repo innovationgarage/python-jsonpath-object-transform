@@ -10,7 +10,7 @@ setuptools.setup(name='python-jsonpath-object-transform',
       url='https://github.com/innovationgarage/python-jsonpath-object-transform',
       packages=setuptools.find_packages(),
       install_requires=[
-          "jsonpath",
+          "jsonpath_ng",
       ],
       include_package_data=True
   )
