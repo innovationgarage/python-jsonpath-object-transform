@@ -18,3 +18,16 @@ the template to the data each at a time.
     >>> from jpot import *
     >>> transform({"foo": 47, "bar": 11}, {"my_synthesized": [["$.foo", "$.bar", {"gazonk": "$.foo"}]]})
     {"my_synthesized": [47, 11, {"gazonk": 11}]}
+
+## Verbatim strings
+
+    >>> transform(something, {"foo": ":Some text"})
+    "Some text"
+
+## Other verbatim values
+
+    >>> transform(something, {"foo": 47})
+    47
+    >>> transform(something, {"foo": true})
+    true
+    

@@ -33,6 +33,9 @@ def transform(data, template):
                       if value is not NoValue]
             return result
     elif isinstance(template, str):
-        return first(parse(template).find(data)).value
+        if template.startswith(":"):
+            return template[1:]
+        else:
+            return first(parse(template).find(data)).value
     else:
-        assert False, "Unknown data type for template: %s" % (type(template),)
+        return template
