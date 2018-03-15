@@ -17,18 +17,21 @@ def transform(data, template):
                 if value is not NoValue}
     elif isinstance(template, (list, tuple)):
         assert len(template) > 0, "List specification must include a JSONPath"
-        result = [item.value for item in parse(template[0]).find(data)] or []
-        if len(template) < 2:
+        if isinstance(template[0], list):
+            return [transform(data, item) for item in template[0]]
+        else:
+            result = [item.value for item in parse(template[0]).find(data)] or []
+            if len(template) < 2:
+                return result
+            if not result:
+                return result
+            result = result[0]
+            result = [value
+                      for value
+                      in (transform(item, template[1])
+                          for item in result)
+                      if value is not NoValue]
             return result
-        if not result:
-            return result
-        result = result[0]
-        result = [value
-                  for value
-                  in (transform(item, template[1])
-                      for item in result)
-                  if value is not NoValue]
-        return result
     elif isinstance(template, str):
         return first(parse(template).find(data)).value
     else:
