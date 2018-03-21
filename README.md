@@ -9,6 +9,21 @@ for transforming JSON documents using JSONPath.
 
 # Extensions over the javascript version
 
+## Multiple path expression engines
+
+Support for path expressions using any of
+
+  * http://objectpath.org
+  * https://github.com/h2non/jsonpath-ng
+  * https://pypi.python.org/pypi/jsonpath
+
+## Chained transforms
+
+Transforms for values returned by path expressions
+
+    >>> transform({"fie": {"gazonk": 47, "nana": 4}}, {"bar": {"$get": "$.fie", "$transform": {"blupp": "$.nana"}}})
+    {'bar': {'blupp': 4}}
+
 ## Verbatim lists
 
 A list wrapped inside another list [[]] produces a list as output,
@@ -21,8 +36,8 @@ the template to the data each at a time.
 
 ## Verbatim strings
 
-    >>> transform(something, {"foo": ":Some text"})
-    "Some text"
+    >>> transform({"fie": 1}, {"foo": "Some text", "bar": {"$get": "$.fie"}}, verbatim_str=True)
+    {"foo": "Some text", "bar": 1}
 
 ## Other verbatim values
 

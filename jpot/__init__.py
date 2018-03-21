@@ -1,4 +1,30 @@
-from jsonpath_ng.ext import parse
+try:
+    import jsonpath_ng.ext
+except:
+    jsonpath_ng = None
+try:
+    import jsonpath.jsonpath
+except:
+    jsonpath = None
+try:
+    import objectpath
+except:
+    objectpath = None
+
+def path_jsonpath_ng(data, expr):
+    """Path expression engine using jsonpath_ng"""
+    if jsonpath_ng is None: raise NotImplementedError("jsonpath_ng is not installed")
+    return [item.value for item in jsonpath_ng.ext.parse(expr).find(data)] or []
+
+def path_jsonpath(data, expr):
+    """Path expression engine using jsonpath"""
+    if jsonpath is None: raise NotImplementedError("jsonpath is not installed")
+    return jsonpath.jsonpath(data, expr, use_eval=False) or []
+
+def path_objectpath(data, expr):
+    """Path expression engine using objectpath"""
+    if objectpath is None: raise NotImplementedError("objectpath is not installed")
+    return list(objectpath.Tree(data).execute(expr)) or []
 
 class NoValue: pass
 
@@ -8,43 +34,56 @@ def first(values):
     else:
         return NoValue        
     
-def transform(data, template, verbatim_str=False):
-    if isinstance(template, dict):
-        if '$get' in template:
-            result = first(parse(template["$get"]).find(data)).value
-            if '$transform' in template:
-                result = transform(result, template['transform'])
-            return result
-        else:
-            return {key: value
-                    for key, value in
-                    ((key, transform(data, value))
-                     for key, value in template.items())
-                    if value is not NoValue}
-    elif isinstance(template, (list, tuple)):
-        assert len(template) > 0, "List specification must include a JSONPath"
-        if isinstance(template[0], list):
-            return [transform(data, item) for item in template[0]]
-        else:
-            result = [item.value for item in parse(template[0]).find(data)] or []
-            if len(template) < 2:
+def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng):
+    """Transforms data according to the template.
+
+    verbatim_str
+        if False, string values are interpreted as path
+        expressions, if True they are copied verbatim to the output.
+    path_engine
+        path expression evaluation engine to use. Should be a function
+        that takes arguments (data, expression) and returns list.
+    """
+
+    def transform(data, template):
+        if isinstance(template, dict):
+            if '$get' in template:
+                result = first(path_engine(data, template["$get"]))
+                if '$transform' in template:
+                    result = transform(result, template['$transform'])
                 return result
-            if not result:
+            else:
+                return {key: value
+                        for key, value in
+                        ((key, transform(data, value))
+                         for key, value in template.items())
+                        if value is not NoValue}
+        elif isinstance(template, (list, tuple)):
+            assert len(template) > 0, "List specification must include a JSONPath"
+            if isinstance(template[0], list):
+                return [transform(data, item) for item in template[0]]
+            else:
+                result = path_engine(data, template[0])
+                if len(template) < 2:
+                    return result
+                if not result:
+                    return result
+                result = result[0]
+                result = [value
+                          for value
+                          in (transform(item, template[1])
+                              for item in result)
+                          if value is not NoValue]
                 return result
-            result = result[0]
-            result = [value
-                      for value
-                      in (transform(item, template[1])
-                          for item in result)
-                      if value is not NoValue]
-            return result
-    elif isinstance(template, str) and not verbatim_str:
-        if template.startswith(":"):
-            return template[1:]
+        elif isinstance(template, str) and not verbatim_str:
+            if template.startswith(":"):
+                return template[1:]
+            else:
+                return first(path_engine(data, template))
         else:
-            return first(parse(template).find(data)).value
-    else:
-        return template
+            return template
+
+    return transform(data, template)
 
 
 def _schema_is_array(schema):    
