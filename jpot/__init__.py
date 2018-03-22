@@ -1,3 +1,7 @@
+import json
+import itertools
+import types
+
 try:
     import jsonpath_ng.ext
 except:
@@ -14,17 +18,25 @@ except:
 def path_jsonpath_ng(data, expr):
     """Path expression engine using jsonpath_ng"""
     if jsonpath_ng is None: raise NotImplementedError("jsonpath_ng is not installed")
-    return [item.value for item in jsonpath_ng.ext.parse(expr).find(data)] or []
+    return [item.value for item in jsonpath_ng.ext.parse(expr).find(data) or []]
+path_jsonpath_ng.no_flatten = True
 
 def path_jsonpath(data, expr):
     """Path expression engine using jsonpath"""
     if jsonpath is None: raise NotImplementedError("jsonpath is not installed")
     return jsonpath.jsonpath(data, expr, use_eval=False) or []
+path_jsonpath.no_flatten = True
 
 def path_objectpath(data, expr):
     """Path expression engine using objectpath"""
     if objectpath is None: raise NotImplementedError("objectpath is not installed")
-    return list(objectpath.Tree(data).execute(expr)) or []
+    res = objectpath.Tree(data).execute(expr)
+    if isinstance(res, (itertools.chain, types.GeneratorType)):
+        res = list(res)
+    else:
+        res = [res]
+    return res
+
 
 class NoValue: pass
 
@@ -34,7 +46,7 @@ def first(values):
     else:
         return NoValue        
     
-def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng):
+def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng, debug=True):
     """Transforms data according to the template.
 
     verbatim_str
@@ -45,10 +57,19 @@ def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng):
         that takes arguments (data, expression) and returns list.
     """
 
+    if debug:
+        def path(data, expr):
+            print("path(\n%s,\n%s)" % (json.dumps(data, indent=2), json.dumps(expr, indent=2)))
+            res = path_engine(data, expr)
+            print("=> %s" % json.dumps(res, indent=2))
+            return res
+    else:
+        path = path_engine
+    
     def transform(data, template):
         if isinstance(template, dict):
             if '$get' in template:
-                result = first(path_engine(data, template["$get"]))
+                result = first(path(data, template["$get"]))
                 if '$transform' in template:
                     result = transform(result, template['$transform'])
                 return result
@@ -63,12 +84,13 @@ def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng):
             if isinstance(template[0], list):
                 return [transform(data, item) for item in template[0]]
             else:
-                result = path_engine(data, template[0])
+                result = path(data, template[0])
                 if len(template) < 2:
                     return result
                 if not result:
                     return result
-                result = result[0]
+                if getattr(path_engine, 'no_flatten', False):
+                    result = result[0]
                 result = [value
                           for value
                           in (transform(item, template[1])
@@ -79,12 +101,19 @@ def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng):
             if template.startswith(":"):
                 return template[1:]
             else:
-                return first(path_engine(data, template))
+                return first(path(data, template))
         else:
             return template
 
-    return transform(data, template)
+    if debug:
+        print("transform(\n%s,\n%s)" % (json.dumps(data, indent=2), json.dumps(template, indent=2)))
 
+    res = transform(data, template)
+
+    if debug:
+        print("=> %s" % json.dumps(res, indent=2))
+    
+    return res
 
 def _schema_is_array(schema):    
     for name in ("items", "additionalItems", "maxItems", "minItems", "uniqueItems", "contains"):
