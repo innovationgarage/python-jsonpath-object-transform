@@ -1,4 +1,3 @@
-import json
 import itertools
 import types
 
@@ -19,13 +18,11 @@ def path_jsonpath_ng(data, expr):
     """Path expression engine using jsonpath_ng"""
     if jsonpath_ng is None: raise NotImplementedError("jsonpath_ng is not installed")
     return [item.value for item in jsonpath_ng.ext.parse(expr).find(data) or []]
-path_jsonpath_ng.no_flatten = True
 
 def path_jsonpath(data, expr):
     """Path expression engine using jsonpath"""
     if jsonpath is None: raise NotImplementedError("jsonpath is not installed")
     return jsonpath.jsonpath(data, expr, use_eval=False) or []
-path_jsonpath.no_flatten = True
 
 def path_objectpath(data, expr):
     """Path expression engine using objectpath"""
@@ -38,7 +35,8 @@ def path_objectpath(data, expr):
     return res
 
 
-class NoValue: pass
+class NoValue:
+    def __nonzero__(self): return False
 
 def first(values):
     if values:
@@ -46,7 +44,7 @@ def first(values):
     else:
         return NoValue        
     
-def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng, debug=True):
+def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng, debug=False, debug_path=False):
     """Transforms data according to the template.
 
     verbatim_str
@@ -57,17 +55,20 @@ def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng, 
         that takes arguments (data, expression) and returns list.
     """
 
-    if debug:
+    if debug_path:
         def path(data, expr):
-            print("path(\n%s,\n%s)" % (json.dumps(data, indent=2), json.dumps(expr, indent=2)))
+            print("path(\n%s,\n%s)" % (repr(data), repr(expr)))
             res = path_engine(data, expr)
-            print("=> %s" % json.dumps(res, indent=2))
+            print("=> %s" % repr(res))
             return res
     else:
         path = path_engine
     
     def transform(data, template):
         if isinstance(template, dict):
+            if '$if' in template:
+                if not first(path(data, template["$if"])):
+                    return NoValue
             if '$get' in template:
                 result = first(path(data, template["$get"]))
                 if '$transform' in template:
@@ -77,26 +78,32 @@ def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng, 
                 return {key: value
                         for key, value in
                         ((key, transform(data, value))
-                         for key, value in template.items())
+                         for key, value in template.items()
+                         if key != '$if')
                         if value is not NoValue}
         elif isinstance(template, (list, tuple)):
             assert len(template) > 0, "List specification must include a JSONPath"
             if isinstance(template[0], list):
-                return [transform(data, item) for item in template[0]]
+                result = [transform(data, item) for item in template[0]]
             else:
                 result = path(data, template[0])
-                if len(template) < 2:
-                    return result
-                if not result:
-                    return result
-                if getattr(path_engine, 'no_flatten', False):
-                    result = result[0]
+                if result and len(template) > 1:
+                    result = [a
+                              for b in result
+                              for a in (b
+                                        if isinstance(b, (list, tuple))
+                                        else [b])]
+            if len(template) > 1:
                 result = [value
                           for value
                           in (transform(item, template[1])
-                              for item in result)
-                          if value is not NoValue]
-                return result
+                              for item in result
+                              if item is not NoValue)
+                          ]
+            result = [item for item in result if item is not NoValue]
+            if len(template) > 2:
+                result = transform(result, template[2])
+            return result
         elif isinstance(template, str) and not verbatim_str:
             if template.startswith(":"):
                 return template[1:]
@@ -106,12 +113,12 @@ def transform(data, template, verbatim_str=False, path_engine=path_jsonpath_ng, 
             return template
 
     if debug:
-        print("transform(\n%s,\n%s)" % (json.dumps(data, indent=2), json.dumps(template, indent=2)))
+        print("transform(\n%s,\n%s)" % (repr(data), repr(template)))
 
     res = transform(data, template)
 
     if debug:
-        print("=> %s" % json.dumps(res, indent=2))
+        print("=> %s" % repr(res))
     
     return res
 
